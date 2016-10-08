@@ -32,7 +32,6 @@ Require Import Coq.omega.Omega.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Maps.
-
 (* ################################################################# *)
 (** * Arithmetic and Boolean Expressions *)
 
@@ -438,20 +437,48 @@ Qed.
     it is sound.  Use the tacticals we've just seen to make the proof
     as elegant as possible. *)
 
-Fixpoint optimize_0plus_b (b : bexp) : bexp 
-  (* REPLACE THIS LINE WITH   := _your_definition_ . *) . Admitted.
+Fixpoint optimize_0plus_b (b : bexp) : bexp :=
+  match b with
+  | BTrue => BTrue
+  | BFalse => BFalse
+  | BEq a1 a2 => BEq ( optimize_0plus a1) ( optimize_0plus a2) 
+  | BLe a1 a2 => BLe ( optimize_0plus a1) ( optimize_0plus a2) 
+  | BNot b => BNot (optimize_0plus_b b)
+  | BAnd b1 b2 => BAnd (optimize_0plus_b b1) (optimize_0plus_b b2)
+  end.
+                                         
 
 Theorem optimize_0plus_b_sound : forall b,
   beval (optimize_0plus_b b) = beval b.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intro b.
+  induction b.
+- (*BTrue*) trivial.  
+- (*BFalse*) trivial.  
+- unfold beval ; unfold optimize_0plus_b; simpl;
+  rewrite optimize_0plus_sound;
+  rewrite optimize_0plus_sound.
+  reflexivity.
+ - unfold beval ; unfold optimize_0plus_b; simpl;
+  rewrite optimize_0plus_sound;
+  rewrite optimize_0plus_sound.
+   reflexivity.
+  - simpl. rewrite IHb.
+    reflexivity.
+  - unfold optimize_0plus_b; simpl; fold  optimize_0plus_b.
+    rewrite IHb1.
+    rewrite IHb2.
+    reflexivity.
+Qed.
+
+
 (** [] *)
 
 (** **** Exercise: 4 stars, optional (optimizer)  *)
 (** _Design exercise_: The optimization implemented by our
     [optimize_0plus] function is only one of many possible
     optimizations on arithmetic and boolean expressions.  Write a more
-    sophisticated optimizer and prove it correct.
+    sophisticated optimizer and prove it correct. TODO
 
 (* FILL IN HERE *)
 *)
@@ -750,13 +777,81 @@ Qed.
 (** Write a relation [bevalR] in the same style as
     [aevalR], and prove that it is equivalent to [beval].*)
 
-(* 
-Inductive bevalR:
-(* FILL IN HERE *)
-*)
-(** [] *)
 
+  Inductive bevalR : bexp -> bool -> Prop :=
+    | E_BTrue : bevalR BTrue true
+    | E_BFalse : bevalR BFalse false
+    | E_BEq : forall (e1 e2 : aexp) (n1 n2 : nat),
+                (e1 \\ n1) -> (e2 \\ n2) -> (bevalR (BEq e1 e2) (beq_nat n1 n2))
+    | E_BLe : forall (e1 e2 : aexp) (n1 n2 : nat),
+                (e1 \\ n1) -> (e2 \\ n2) -> (bevalR (BLe e1 e2) (n1 <=? n2))
+    | E_BNot : forall (e : bexp) (b : bool),
+                 (bevalR e b) -> (bevalR (BNot e) (negb b))
+    | E_BAnd : forall (e1 e2 : bexp) (b1 b2 : bool),
+                 (bevalR e1 b1) -> (bevalR e2 b2) -> (bevalR (BAnd e1 e2) (b1 && b2)).
+
+  Theorem beval_iff_bevalR :
+    forall e b,
+      bevalR e b <-> beval e = b.
+  Proof.
+    split.
+    (* -> *)
+    intros H.
+    induction H.
+
+    reflexivity.
+    reflexivity.
+
+    simpl;
+    try apply aeval_iff_aevalR' in H;
+    try apply aeval_iff_aevalR' in H0;
+    try rewrite H;
+    try rewrite H0;
+    reflexivity.
+
+    simpl;
+    try apply aeval_iff_aevalR' in H;
+    try apply aeval_iff_aevalR' in H0;
+    try rewrite H;
+    try rewrite H0;
+    reflexivity.
+
+    simpl.
+    rewrite IHbevalR;
+      reflexivity.
+
+    simpl.
+    rewrite IHbevalR1.
+    rewrite IHbevalR2.
+    reflexivity.
+
+    (* -> *)
+    generalize dependent b.
+    induction e; intros; simpl in H; rewrite <- H;
+      constructor.
+
+    apply aeval_iff_aevalR.
+    reflexivity.
+    apply aeval_iff_aevalR.
+    reflexivity.
+
+    apply aeval_iff_aevalR.
+    reflexivity.
+    apply aeval_iff_aevalR.
+    reflexivity.
+
+    apply IHe.
+    reflexivity.
+
+    apply IHe1.
+    reflexivity.
+    apply IHe2.
+    reflexivity.
+  Qed.
+  
+    
 End AExp.
+
 
 (* ================================================================= *)
 (** ** Computational vs. Relational Definitions *)
@@ -1043,7 +1138,7 @@ Definition subtract_slowly_body : com :=
 
 (* ----------------------------------------------------------------- *)
 (** *** Loops *)
-
+ 
 Definition subtract_slowly : com :=
   WHILE BNot (BEq (AId X) (ANum 0)) DO
     subtract_slowly_body
@@ -1247,8 +1342,10 @@ Example ceval_example2:
     (X ::= ANum 0;; Y ::= ANum 1;; Z ::= ANum 2) / empty_state \\
     (t_update (t_update (t_update empty_state X 0) Y 1) Z 2).
 Proof.
-  (* FILL IN HERE *) Admitted.
-(** [] *)
+  repeat eapply E_Seq; eapply E_Ass; simpl; exists.
+Qed.
+
+  (** [] *)
 
 (** **** Exercise: 3 stars, advanced (pup_to_n)  *)
 (** Write an Imp program that sums the numbers from [1] to
@@ -1256,15 +1353,36 @@ Proof.
    Prove that this program executes as intended for [X] = [2]
    (the latter is trickier than you might expect). *)
 
-Definition pup_to_n : com 
-  (* REPLACE THIS LINE WITH   := _your_definition_ . *) . Admitted.
+Definition pup_to_n : com :=
+  (Y ::= ANum 0 ;;
+    WHILE BNot (BEq (AId X) (ANum 0)) DO
+       Y ::= APlus (AId Y) (AId X) ;;
+       X ::= AMinus (AId X) (ANum 1)
+    END).
 
 Theorem pup_to_2_ceval :
   pup_to_n / (t_update empty_state X 2) \\
     t_update (t_update (t_update (t_update (t_update (t_update empty_state
       X 2) Y 0) Y 2) X 1) Y 3) X 0.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  apply E_Seq with (t_update (t_update empty_state X 2) Y 0).
+  apply E_Ass.
+  trivial.
+  apply E_WhileLoop with (t_update (t_update (t_update (t_update empty_state X 2) Y 0) Y 2) X 1).
+  trivial.
+
+  apply E_Seq with (t_update (t_update (t_update empty_state X 2) Y 0) Y 2).
+  apply E_Ass. trivial.
+  apply E_Ass. trivial.
+
+  apply E_WhileLoop with (t_update (t_update (t_update (t_update (t_update (t_update empty_state X 2) Y 0) Y 2) X 1) Y 3) X 0). trivial.
+  apply E_Seq with (t_update (t_update (t_update (t_update (t_update empty_state X 2) Y 0) Y 2) X 1) Y 3).
+  apply E_Ass. trivial.
+  apply E_Ass. trivial.
+
+  apply E_WhileEnd. trivial.
+Qed.
+
 (** [] *)
 
 
